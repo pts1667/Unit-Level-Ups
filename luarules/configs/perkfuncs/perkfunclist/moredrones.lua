@@ -1,7 +1,7 @@
 local updateDrones = function (unitID, unitDefID, unitTeam, experience, oldExperience)
   GG.SetMiniMeGuardRadius(unitID, 300.0 + math.log(math.floor(experience)) * 10.0)
-  local oldNumDrones = 3.0 + math.floor(oldExperience / 10.0)
-  local newNumDrones = 3.0 + math.floor(experience / 10.0)
+  local oldNumDrones = math.min(30.0, 3.0 + math.floor(oldExperience / 10.0))
+  local newNumDrones = math.min(30.0, 3.0 + math.floor(experience / 10.0))
   if oldNumDrones == newNumDrones then
     return
   end

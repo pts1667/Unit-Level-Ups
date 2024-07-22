@@ -1,6 +1,8 @@
 local updateDrones = function (unitID, unitDefID, unitTeam, experience, oldExperience)
   GG.SetMiniMeGuardRadius(unitID, 300.0 + math.log(math.floor(experience)) * 10.0)
-  if math.floor(experience / 5.0) == math.floor(oldExperience / 5.0) then
+  local oldNumDrones = 3.0 + math.floor(oldExperience / 10.0)
+  local newNumDrones = 3.0 + math.floor(experience / 10.0)
+  if oldNumDrones == newNumDrones then
     return
   end
 
@@ -13,11 +15,10 @@ local updateDrones = function (unitID, unitDefID, unitTeam, experience, oldExper
     for _ in pairs(GG.MiniMeMasterTables[unitID]) do prevNumDrones = prevNumDrones + 1 end
   end
 
-  local newDroneNum = math.floor(experience / 5.0)
   local normalName = UnitDefs[unitDefID].name
   local miniUnitDefExists = UnitDefNames[normalName .. "_mini"] or false
   if miniUnitDefExists then
-    GG.QueueMiniMe(unitID, normalName .. "_mini", unitTeam, newDroneNum - prevNumDrones)
+    GG.QueueMiniMe(unitID, normalName .. "_mini", unitTeam, newNumDrones - prevNumDrones)
   end
 end
 

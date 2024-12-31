@@ -86,6 +86,8 @@ local callInLists = {
 	"GameID",
 	"TeamDied",
 
+  "GamePaused",
+
 	"PlayerAdded",
 	"PlayerChanged",
 	"PlayerRemoved",
@@ -97,6 +99,9 @@ local callInLists = {
 	"TextCommand",  -- FIXME ?
 	"GotChatMsg",
 	"RecvLuaMsg",
+
+	-- Custom from gadgets themselves
+	"UnitCreatedByMechanic",
 
 	-- Unit CallIns
 	"UnitCreated",
@@ -127,6 +132,7 @@ local callInLists = {
 	-- "UnitUnitCollision",
 	-- "UnitFeatureCollision",
 	-- "UnitMoveFailed",
+  "UnitArrivedAtGoal",
 	"StockpileChanged",
 
 	-- Feature CallIns
@@ -223,10 +229,6 @@ local callInLists = {
 	"MapDrawCmd",
 	"GameSetup",
 	"DefaultCommand",
-
-	-- Save/Load
-	"Save",
-	"Load",
 
 	-- FIXME: NOT IN BASE
 	"UnitCommand",
@@ -524,6 +526,12 @@ function gadgetHandler:NewGadget()
     end
     gh.RemoveSyncAction = function(_, cmd)
       return actionHandler.RemoveSyncAction(gadget, cmd)
+    end
+  end
+
+  if IsSyncedCode() then
+    gh.NotifyUnitCreatedByMechanic = function(_, unitID, parentID, mechanicName, extraData)
+      self:UnitCreatedByMechanic(unitID, parentID, mechanicName, extraData)
     end
   end
 
@@ -969,6 +977,13 @@ function gadgetHandler:GameStart()
   return
 end
 
+function gadgetHandler:GamePaused(playerID, paused)
+  for _,g in r_ipairs(self.GamePausedList) do
+    g:GamePaused(playerID, paused)
+  end
+  return
+end
+
 function gadgetHandler:Shutdown()
   Spring.Echo("Start gadgetHandler:Shutdown")
   for _,g in r_ipairs(self.ShutdownList) do
@@ -1131,12 +1146,12 @@ end
 function gadgetHandler:AllowUnitCreation(unitDefID, builderID,
                                          builderTeam, x, y, z, facing)
   for _,g in r_ipairs(self.AllowUnitCreationList) do
-    if (not g:AllowUnitCreation(unitDefID, builderID,
-                                builderTeam, x, y, z, facing)) then
-      return false
+    local allow, drop = g:AllowUnitCreation(unitDefID, builderID, builderTeam, x, y, z, facing)
+    if not allow then
+      return false, drop
     end
   end
-  return true
+  return true, true
 end
 
 
@@ -1323,12 +1338,18 @@ end
 
 
 function gadgetHandler:AllowWeaponTargetCheck(attackerID, attackerWeaponNum, attackerWeaponDefID)
+	local ignore = true
 	for _, g in r_ipairs(self.AllowWeaponTargetCheckList) do
-		if (not g:AllowWeaponTargetCheck(attackerID, attackerWeaponNum, attackerWeaponDefID)) then
-			return false
+		local allowCheck, ignoreCheck = g:AllowWeaponTargetCheck(attackerID, attackerWeaponNum, attackerWeaponDefID)
+		if not ignoreCheck then
+			ignore = false
+			if not allowCheck then
+				return 0
+			end
 		end
 	end
-	return true
+
+	return ((ignore and -1) or 1)
 end
 
 -- AllowWeaponTarget is also called when auto-generating CAI attack commands.
@@ -1386,6 +1407,12 @@ end
 --  Unit call-ins
 --
 
+function gadgetHandler:UnitCreatedByMechanic(unitID, parentID, mechanicName, extraData)
+  for _,g in r_ipairs(self.UnitCreatedByMechanicList) do
+    g:UnitCreatedByMechanic(unitID, parentID, mechanicName, extraData)
+  end
+end
+
 local inCreated = false
 local finishedDuringCreated = false -- assumes non-recursive create
 function gadgetHandler:UnitCreated(unitID, unitDefID, unitTeam, builderID)
@@ -1441,10 +1468,15 @@ end
 
 function gadgetHandler:UnitDestroyed(unitID,     unitDefID,     unitTeam,
                                      attackerID, attackerDefID, attackerTeam, pre)
-  if pre == false then return end
+  if pre == false then
+    return
+  end
+  if gadgetHandler.GG._AddUnitDamage_teamID then
+  attackerTeam = gadgetHandler.GG._AddUnitDamage_teamID
+  end
   for _,g in r_ipairs(self.UnitDestroyedList) do
-    g:UnitDestroyed(unitID,     unitDefID,     unitTeam,
-                    attackerID, attackerDefID, attackerTeam)
+  g:UnitDestroyed(unitID,     unitDefID,     unitTeam,
+  attackerID, attackerDefID, attackerTeam)
   end
   return
 end
@@ -1519,6 +1551,9 @@ function gadgetHandler:UnitPreDamaged(unitID, unitDefID, unitTeam,
 
 	local gadgets = UnitPreDamaged_GadgetMap[weaponDefID]
 	if gadgets then
+		if gadgetHandler.GG._AddUnitDamage_teamID then
+			attackerTeam = gadgetHandler.GG._AddUnitDamage_teamID
+		end
 		local data = gadgets.data
 		local g
 		for i = 1, gadgets.count do
@@ -1560,6 +1595,10 @@ function gadgetHandler:UnitDamaged(unitID, unitDefID, unitTeam,
 			UnitDamagedFIXED_gadgets[UnitDamagedFIXED_count] = g
 		end
 		UnitDamaged_first = false
+	end
+
+	if gadgetHandler.GG._AddUnitDamage_teamID then
+		attackerTeam = gadgetHandler.GG._AddUnitDamage_teamID
 	end
 
 	local g
@@ -1686,6 +1725,11 @@ function gadgetHandler:UnitFeatureCollision(colliderID, collideeID)
 	end
 end
 
+function gadgetHandler:UnitArrivedAtGoal(unitID, unitDefID, teamID)
+	for _,g in r_ipairs(self.UnitArrivedAtGoalList) do
+		g:UnitArrivedAtGoal(unitID, unitDefID, teamID)
+	end
+end
 
 function gadgetHandler:StockpileChanged(unitID, unitDefID, unitTeam,
                                         weaponNum, oldCount, newCount)
@@ -2059,24 +2103,6 @@ function gadgetHandler:UnsyncedHeightMapUpdate(x1, z1, x2, z2)
   end
   return
 end
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
-function gadgetHandler:Save(zip)
-  for _,g in r_ipairs(self.SaveList) do
-    g:Save(zip)
-  end
-  return
-end
-
-
-function gadgetHandler:Load(zip)
-  for _,g in r_ipairs(self.LoadList) do
-    g:Load(zip)
-  end
-  return
-end
-
 
 --------------------------------------------------------------------------------
 --------------------------------------------------------------------------------
@@ -2275,4 +2301,3 @@ end
 --------------------------------------------------------------------------------
 
 gadgetHandler:Initialize()
-

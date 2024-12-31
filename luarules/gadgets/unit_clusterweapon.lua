@@ -113,6 +113,7 @@ local function spawnClusterProjectile(spawnInfo)
       speed = {vx, vy, vz},
       owner = owner,
       team = Spring.GetUnitTeam(owner),
+      ttl = 1800,
       gravity = spawnInfo.gravity,
       tracking = wd.tracks,
       maxRange = wd.flightTime and wd.weaponVelocity and (wd.flightTime * wd.weaponVelocity)

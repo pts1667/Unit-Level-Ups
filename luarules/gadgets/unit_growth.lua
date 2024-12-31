@@ -338,11 +338,13 @@ local function setStats(unitID, UnitDef, experience)
 	spSetUnitHealth(unitID, math.min(new_max_health, new_current_health))
 	
 	local cost = getCost(unitID, spGetUnitDefID(unitID))
-	spSetUnitCosts(unitID, {
-		buildTime = cost * max_hp_mult,
-		metalCost = cost * max_hp_mult,
-		energyCost = cost * max_hp_mult
-	})
+	if cost then
+		spSetUnitCosts(unitID, {
+			buildTime = cost * max_hp_mult,
+			metalCost = cost * max_hp_mult,
+			energyCost = cost * max_hp_mult
+		})
+	end
 
 	if not blacklist.noscale[UnitDef.name] and (not string.find(UnitDef.name, "dyntrainer")) then
     	GG.UnitScale(unitID, scale_mult)
